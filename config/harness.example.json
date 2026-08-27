@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "product": {
+    "name": "My Agent Deck",
+    "stateDirectory": "~/Library/Application Support/Mochi Harness"
+  },
+  "hardware": {
+    "profile": "sayo-k07-h3",
+    "vendorId": 32905,
+    "productId": 14,
+    "keyCount": 7,
+    "display": {
+      "width": 160,
+      "height": 80
+    }
+  },
+  "controlsProfile": "seven-key-eyes-free-v1",
+  "agents": [
+    {
+      "slot": 1,
+      "id": "agent-one",
+      "displayName": "Agent One",
+      "adapter": "codex",
+      "approvalAdapter": "codex-app-server",
+      "command": ["codex"],
+      "theme": "starter",
+      "accentColor": "#D00065",
+      "requiredEnvironment": []
+    },
+    {
+      "slot": 2,
+      "id": "agent-two",
+      "displayName": "Agent Two",
+      "adapter": "claude",
+      "approvalAdapter": "claude-hooks",
+      "command": ["claude"],
+      "theme": "starter",
+      "accentColor": "#B88CFF",
+      "requiredEnvironment": []
+    },
+    {
+      "slot": 3,
+      "id": "local-shell",
+      "displayName": "Local Shell",
+      "adapter": "command",
+      "approvalAdapter": "none",
+      "command": ["/bin/zsh", "-l"],
+      "theme": "starter",
+      "accentColor": "#E0A51B",
+      "requiredEnvironment": []
+    }
+  ]
+}
