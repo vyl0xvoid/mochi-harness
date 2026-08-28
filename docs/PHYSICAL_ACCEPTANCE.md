@@ -7,7 +7,8 @@ future runtime or guarded configurator are not claimed as implemented yet.
 ## Before any write
 
 - `make check` passes.
-- `make doctor` identifies the exact host, agent commands, and USB identity.
+- `mochi-harness-doctor --require-hardware` identifies the host, agent commands,
+  and supported USB VID/PID and exits successfully.
 - The intended device records are read and saved to an owner-only rollback
   file with a digest.
 - The proposed byte changes name exact records and leave every other control

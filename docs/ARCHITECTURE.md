@@ -64,7 +64,8 @@ The installer should be generated from resolved local paths rather than
 shipping reference-owner-specific files:
 
 1. discover Python, agent commands, compiler, and supported USB identity;
-2. create owner-only state and config directories;
+2. create an owner-owned `0600` config and owner-only state directory inside
+   the current user's home;
 3. build native helpers locally with warnings as errors;
 4. generate Claude/Grok hook files with the installed absolute path;
 5. generate a per-user LaunchAgent from a template;
@@ -72,6 +73,12 @@ shipping reference-owner-specific files:
 7. run the guarded hardware profile configurator only as a separate confirmed
    step;
 8. run an automated doctor and a short physical acceptance script.
+
+The published initializer now safely creates the generic config and refuses to
+overwrite it. The published doctor validates config ownership and permissions,
+uses a precise VID/PID result, and offers a strict hardware-required preflight.
+Those commands remain scaffolding: they do not install or run the future host
+service.
 
 Uninstall must unload the LaunchAgent and remove generated state without
 touching user art, rollback backups, agent CLIs, or unrelated Terminal windows.

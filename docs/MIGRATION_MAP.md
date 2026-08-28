@@ -6,7 +6,7 @@ generic fixtures and regression tests before the next slice begins.
 
 | Public component | Reference responsibility | Extraction rule | Status |
 | --- | --- | --- | --- |
-| `config` | fixed provider, path, hardware, and color constants | resolve only strict versioned config | scaffolded |
+| `config` | fixed provider, path, hardware, and color constants | strict versioned config, duplicate rejection, owner-only runtime source, redacted public view | hardened scaffold |
 | `core.approvals` | exact request queue and bounded summaries | remove owner/provider display names; retain exact responder identity | queued |
 | `core.sessions` | named sessions, exact TTY focus/submit/exit | make slots configurable; retain owner-process verification | queued |
 | `adapters.codex` | App Server proxy | generate local endpoint/token state; never place tokens in URLs or status | queued |
@@ -18,7 +18,7 @@ generic fixtures and regression tests before the next slice begins.
 | `hardware.k07` | input, 160×80 display, and runtime LEDs | build locally for exact profile; never ship accepted local binaries | queued |
 | `hardware.configure` | guarded record repair | backup, narrow write, read-back, power-cycle, read-back | queued |
 | `service.macos` | supervisor and LaunchAgent | generate paths at install time | queued |
-| `cli` | setup and maintenance scripts | expose `init`, `doctor`, `install`, `test`, `uninstall` | doctor scaffolded |
+| `cli` | setup and maintenance scripts | expose `init`, `doctor`, `install`, `test`, `uninstall` | safe init + doctor scaffolded |
 
 ## Slice order
 

@@ -22,17 +22,19 @@ class Check:
     detail: str
 
 
-def _command_available(command: str) -> bool:
+def _command_available(command: str, base_directory: Path) -> bool:
     expanded = Path(command).expanduser()
     if expanded.is_absolute() or "/" in command:
+        if not expanded.is_absolute():
+            expanded = base_directory / expanded
         return expanded.is_file() and os.access(expanded, os.X_OK)
     return shutil.which(command) is not None
 
 
-def _device_present(vendor_id: int, product_id: int) -> tuple[bool, str]:
+def _device_present(vendor_id: int, product_id: int) -> tuple[str, str]:
     hidutil = Path("/usr/bin/hidutil")
     if not hidutil.is_file():
-        return False, "hidutil is unavailable"
+        return "error", "hidutil is unavailable"
     try:
         result = subprocess.run(
             (str(hidutil), "list"),
@@ -42,7 +44,9 @@ def _device_present(vendor_id: int, product_id: int) -> tuple[bool, str]:
             timeout=4,
         )
     except (OSError, subprocess.SubprocessError) as error:
-        return False, f"HID inspection failed: {error}"
+        return "error", f"HID inspection failed: {error}"
+    if result.returncode != 0:
+        return "error", f"hidutil list exited with status {result.returncode}"
     found = False
     for row in result.stdout.splitlines():
         columns = row.split()
@@ -56,20 +60,37 @@ def _device_present(vendor_id: int, product_id: int) -> tuple[bool, str]:
         if (row_vendor, row_product) == (vendor_id, product_id):
             found = True
             break
-    return found, (
-        "exact USB identity is visible"
+    return ("ok" if found else "warning"), (
+        "supported USB VID/PID is visible"
         if found
         else f"0x{vendor_id:04x}/0x{product_id:04x} is not currently visible"
     )
 
 
-def run_doctor(config_path: Path) -> list[Check]:
+def run_doctor(
+    config_path: Path,
+    *,
+    allow_public_config: bool = False,
+    require_hardware: bool = False,
+) -> list[Check]:
     checks: list[Check] = []
     try:
-        config = load_config(config_path)
+        config = load_config(
+            config_path, require_owner_only=not allow_public_config
+        )
     except HarnessConfigError as error:
         return [Check("config", "error", str(error))]
-    checks.append(Check("config", "ok", "strict schema and secret guard passed"))
+    checks.append(
+        Check(
+            "config",
+            "warning" if allow_public_config else "ok",
+            (
+                "public example accepted for validation only; runtime requires 0600"
+                if allow_public_config
+                else "strict validator, ownership, permissions, and secret guard passed"
+            ),
+        )
+    )
 
     if platform.system() == "Darwin":
         checks.append(Check("host", "ok", f"macOS {platform.mac_ver()[0] or 'detected'}"))
@@ -82,7 +103,7 @@ def run_doctor(config_path: Path) -> list[Check]:
 
     for agent in config.agents:
         executable = agent.command[0]
-        available = _command_available(executable)
+        available = _command_available(executable, config.source.parent)
         checks.append(
             Check(
                 f"agent:{agent.identifier}",
@@ -105,8 +126,11 @@ def run_doctor(config_path: Path) -> list[Check]:
             )
         )
 
-    present, detail = _device_present(config.vendor_id, config.product_id)
-    checks.append(Check("hardware", "ok" if present else "warning", detail))
+    hardware_status, detail = _device_present(config.vendor_id, config.product_id)
+    if require_hardware and hardware_status == "warning":
+        hardware_status = "error"
+        detail = f"{detail}; hardware is required for this preflight"
+    checks.append(Check("hardware", hardware_status, detail))
     checks.append(
         Check(
             "compiler",
@@ -121,8 +145,11 @@ def run_doctor(config_path: Path) -> list[Check]:
     checks.append(
         Check(
             "safety",
-            "ok",
-            "seven-key-eyes-free-v1 is locked; doctor performed no writes",
+            "warning",
+            (
+                "config profile is locked and doctor performed no writes; "
+                "runtime and physical safety were not exercised"
+            ),
         )
     )
     return checks
@@ -132,8 +159,22 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument(
+        "--allow-public-config",
+        action="store_true",
+        help="validate a public example without treating it as a runtime config",
+    )
+    parser.add_argument(
+        "--require-hardware",
+        action="store_true",
+        help="return an error when the supported USB device is absent",
+    )
     args = parser.parse_args(argv)
-    checks = run_doctor(args.config)
+    checks = run_doctor(
+        args.config,
+        allow_public_config=args.allow_public_config,
+        require_hardware=args.require_hardware,
+    )
     if args.as_json:
         print(json.dumps([asdict(check) for check in checks], indent=2))
     else:

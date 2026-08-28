@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 from typing import Any, Mapping
 
 
@@ -33,10 +34,24 @@ _CREDENTIAL_ARGUMENT = re.compile(
     r"authorization\s*:|bearer\s+",
     re.IGNORECASE,
 )
+_UNEXPANDED_ENVIRONMENT = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]+\})")
 
 
 class HarnessConfigError(ValueError):
     """Raised when a harness config could target the wrong thing or leak data."""
+
+
+class _DuplicateKeyError(ValueError):
+    pass
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateKeyError(f"duplicate JSON field: {key}")
+        result[key] = value
+    return result
 
 
 def _mapping(value: object, label: str) -> Mapping[str, Any]:
@@ -73,6 +88,16 @@ def _command_argument(value: object, label: str) -> str:
         raise HarnessConfigError(
             f"{label} looks credential-bearing; use requiredEnvironment instead"
         )
+    return value
+
+
+def _path_text(value: object, label: str) -> str:
+    if not isinstance(value, str):
+        raise HarnessConfigError(f"{label} must be text")
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise HarnessConfigError(f"{label} contains a control character")
+    if not value.strip() or len(value) > 1024:
+        raise HarnessConfigError(f"{label} must contain 1-1024 characters")
     return value
 
 
@@ -132,10 +157,9 @@ class HarnessConfig:
     agents: tuple[AgentSlot, ...]
 
     def public_dict(self) -> dict[str, object]:
+        """Return status-safe identity data without paths or launch details."""
         return {
-            "source": str(self.source),
             "productName": self.product_name,
-            "stateDirectory": str(self.state_directory),
             "hardware": {
                 "profile": self.hardware_profile,
                 "vendorId": self.vendor_id,
@@ -149,10 +173,8 @@ class HarnessConfig:
                     "displayName": agent.display_name,
                     "adapter": agent.adapter,
                     "approvalAdapter": agent.approval_adapter,
-                    "command": list(agent.command),
                     "theme": agent.theme,
                     "accentColor": agent.accent_color,
-                    "requiredEnvironment": list(agent.required_environment),
                 }
                 for agent in self.agents
             ],
@@ -237,10 +259,67 @@ def _agent(raw: object, index: int) -> AgentSlot:
     )
 
 
-def load_config(path: Path | str) -> HarnessConfig:
-    source = Path(path).expanduser().resolve()
+def _config_source(path: Path | str, require_owner_only: bool) -> Path:
+    candidate = Path(path).expanduser()
     try:
-        document = json.loads(source.read_text(encoding="utf-8"))
+        information = candidate.lstat()
+    except OSError as error:
+        raise HarnessConfigError(f"unable to inspect harness config: {error}") from error
+    if stat.S_ISLNK(information.st_mode):
+        raise HarnessConfigError("harness config must not be a symbolic link")
+    if not stat.S_ISREG(information.st_mode):
+        raise HarnessConfigError("harness config must be a regular file")
+    if require_owner_only:
+        if information.st_uid != os.getuid():
+            raise HarnessConfigError("harness config must be owned by the current user")
+        if stat.S_IMODE(information.st_mode) & 0o077:
+            raise HarnessConfigError("harness config permissions must be owner-only (0600)")
+    return candidate.resolve()
+
+
+def _state_directory(value: object, require_owner_only: bool) -> Path:
+    state_text = _path_text(value, "product.stateDirectory")
+    expanded = os.path.expandvars(state_text)
+    if _UNEXPANDED_ENVIRONMENT.search(expanded):
+        raise HarnessConfigError("product.stateDirectory contains an unset variable")
+    candidate = Path(expanded).expanduser()
+    if require_owner_only and candidate.is_symlink():
+        raise HarnessConfigError("product.stateDirectory must not be a symbolic link")
+    result = candidate.resolve()
+    home = Path.home().resolve()
+    try:
+        relative = result.relative_to(home)
+    except ValueError as error:
+        raise HarnessConfigError(
+            "product.stateDirectory must resolve inside the current user's home"
+        ) from error
+    if not relative.parts:
+        raise HarnessConfigError("product.stateDirectory must not be the home directory")
+    if require_owner_only and result.exists():
+        information = result.stat()
+        if not stat.S_ISDIR(information.st_mode):
+            raise HarnessConfigError("product.stateDirectory must be a directory")
+        if information.st_uid != os.getuid():
+            raise HarnessConfigError(
+                "product.stateDirectory must be owned by the current user"
+            )
+        if stat.S_IMODE(information.st_mode) & 0o077:
+            raise HarnessConfigError(
+                "product.stateDirectory permissions must be owner-only (0700)"
+            )
+    return result
+
+
+def load_config(
+    path: Path | str, *, require_owner_only: bool = True
+) -> HarnessConfig:
+    source = _config_source(path, require_owner_only)
+    try:
+        document = json.loads(
+            source.read_text(encoding="utf-8"), object_pairs_hook=_unique_object
+        )
+    except _DuplicateKeyError as error:
+        raise HarnessConfigError(str(error)) from error
     except (OSError, json.JSONDecodeError) as error:
         raise HarnessConfigError(f"unable to read harness config: {error}") from error
     root = _mapping(document, "config")
@@ -256,8 +335,9 @@ def load_config(path: Path | str) -> HarnessConfig:
     product = _mapping(root.get("product"), "product")
     _only_keys(product, {"name", "stateDirectory"}, "product")
     product_name = _text(product.get("name"), "product.name", 64)
-    state_text = _text(product.get("stateDirectory"), "product.stateDirectory", 1024)
-    state_directory = Path(os.path.expandvars(state_text)).expanduser().resolve()
+    state_directory = _state_directory(
+        product.get("stateDirectory"), require_owner_only
+    )
 
     hardware = _mapping(root.get("hardware"), "hardware")
     _only_keys(

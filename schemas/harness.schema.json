@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:mochi-harness:schema:config:v1",
   "title": "Mochi Harness configuration",
+  "$comment": "The Python loader additionally rejects duplicate object keys, duplicate agent IDs, credential-bearing command arguments, control characters, unsafe state paths, and insecure runtime-config permissions.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "product", "hardware", "controlsProfile", "agents"],
@@ -41,6 +42,11 @@
       "type": "array",
       "minItems": 3,
       "maxItems": 3,
+      "allOf": [
+        {"contains": {"properties": {"slot": {"const": 1}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"slot": {"const": 2}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"slot": {"const": 3}}}, "minContains": 1, "maxContains": 1}
+      ],
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -69,7 +75,25 @@
             "uniqueItems": true,
             "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,127}$"}
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"adapter": {"const": "codex"}}, "required": ["adapter"]},
+            "then": {"properties": {"approvalAdapter": {"const": "codex-app-server"}}}
+          },
+          {
+            "if": {"properties": {"adapter": {"const": "claude"}}, "required": ["adapter"]},
+            "then": {"properties": {"approvalAdapter": {"const": "claude-hooks"}}}
+          },
+          {
+            "if": {"properties": {"adapter": {"const": "grok"}}, "required": ["adapter"]},
+            "then": {"properties": {"approvalAdapter": {"const": "grok-hooks"}}}
+          },
+          {
+            "if": {"properties": {"adapter": {"const": "command"}}, "required": ["adapter"]},
+            "then": {"properties": {"approvalAdapter": {"const": "none"}}}
+          }
+        ]
       }
     }
   }

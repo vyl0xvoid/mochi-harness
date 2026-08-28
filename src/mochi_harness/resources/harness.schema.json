@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mochi-harness:schema:config:v1",
+  "title": "Mochi Harness configuration",
+  "$comment": "The Python loader additionally rejects duplicate object keys, duplicate agent IDs, credential-bearing command arguments, control characters, unsafe state paths, and insecure runtime-config permissions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "product", "hardware", "controlsProfile", "agents"],
+  "properties": {
+    "version": {"const": 1},
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "stateDirectory"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 64},
+        "stateDirectory": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "vendorId", "productId", "keyCount", "display"],
+      "properties": {
+        "profile": {"const": "sayo-k07-h3"},
+        "vendorId": {"const": 32905},
+        "productId": {"const": 14},
+        "keyCount": {"const": 7},
+        "display": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": {"const": 160},
+            "height": {"const": 80}
+          }
+        }
+      }
+    },
+    "controlsProfile": {"const": "seven-key-eyes-free-v1"},
+    "agents": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "allOf": [
+        {"contains": {"properties": {"slot": {"const": 1}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"slot": {"const": 2}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"slot": {"const": 3}}}, "minContains": 1, "maxContains": 1}
+      ],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "slot", "id", "displayName", "adapter", "approvalAdapter",
+          "command", "theme", "accentColor", "requiredEnvironment"
+        ],
+        "properties": {
+          "slot": {"type": "integer", "minimum": 1, "maximum": 3},
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"},
+          "displayName": {"type": "string", "minLength": 1, "maxLength": 64},
+          "adapter": {"enum": ["codex", "claude", "grok", "command"]},
+          "approvalAdapter": {
+            "enum": ["codex-app-server", "claude-hooks", "grok-hooks", "none"]
+          },
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {"type": "string", "minLength": 1, "maxLength": 1024}
+          },
+          "theme": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"},
+          "accentColor": {"type": "string", "pattern": "^#[0-9A-F]{6}$"},
+          "requiredEnvironment": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,127}$"}
+          }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"adapter": {"const": "codex"}}, "required": ["adapter"]},
+            "then": {"properties": {"approvalAdapter": {"const": "codex-app-server"}}}
+          },
+          {
+            "if": {"properties": {"adapter": {"const": "claude"}}, "required": ["adapter"]},
+            "then": {"properties": {"approvalAdapter": {"const": "claude-hooks"}}}
+          },
+          {
+            "if": {"properties": {"adapter": {"const": "grok"}}, "required": ["adapter"]},
+            "then": {"properties": {"approvalAdapter": {"const": "grok-hooks"}}}
+          },
+          {
+            "if": {"properties": {"adapter": {"const": "command"}}, "required": ["adapter"]},
+            "then": {"properties": {"approvalAdapter": {"const": "none"}}}
+          }
+        ]
+      }
+    }
+  }
+}
