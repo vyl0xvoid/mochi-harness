@@ -88,6 +88,20 @@ class DoctorTests(unittest.TestCase):
         self.assertEqual(safety.status, "warning")
         self.assertIn("not exercised", safety.detail)
 
+    def test_public_example_does_not_require_agent_clis_on_validation_host(self) -> None:
+        with patch(
+            "mochi_harness.doctor._command_available",
+            return_value=False,
+        ), patch(
+            "mochi_harness.doctor._device_present",
+            return_value=("warning", "supported VID/PID is absent"),
+        ):
+            checks = run_doctor(EXAMPLE, allow_public_config=True)
+        agents = [check for check in checks if check.name.startswith("agent:")]
+        self.assertTrue(agents)
+        self.assertTrue(all(check.status == "warning" for check in agents))
+        self.assertFalse(any(check.status == "error" for check in checks))
+
 
 if __name__ == "__main__":
     unittest.main()

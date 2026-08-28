@@ -107,8 +107,17 @@ def run_doctor(
         checks.append(
             Check(
                 f"agent:{agent.identifier}",
-                "ok" if available else "error",
-                f"{agent.adapter} command {'found' if available else 'missing'}: {executable}",
+                "ok" if available else ("warning" if allow_public_config else "error"),
+                (
+                    f"{agent.adapter} command found: {executable}"
+                    if available
+                    else (
+                        f"example command is not installed on this validation host: "
+                        f"{executable}"
+                        if allow_public_config
+                        else f"{agent.adapter} command missing: {executable}"
+                    )
+                ),
             )
         )
         missing = [
